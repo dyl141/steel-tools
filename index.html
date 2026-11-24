@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Steel Tools</title>
+  <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font: 13px Arial, sans-serif; margin: 0; color: #222; }
+    /* Tab bar */
+    #tabs { display: flex; flex-wrap: wrap; gap: 2px; padding: 6px 6px 0; background: #eef1f4; border-bottom: 1px solid #ccd; position: sticky; top: 0; z-index: 2; }
+    #tabs button { border: 1px solid #ccd; border-bottom: none; background: #f7f8fa; padding: 5px 8px; cursor: pointer; border-radius: 4px 4px 0 0; font-size: 12px; }
+    #tabs button.on { background: #fff; font-weight: bold; color: #0063a3; position: relative; top: 1px; }
+    /* Tool panels – only one visible */
+    .tool { display: none; padding: 10px; }
+    .tool.on { display: block; }
+    h3 { margin: 0 0 4px; font-size: 14px; color: #0063a3; }
+    .desc { color: #666; font-size: 12px; margin: 0 0 8px; }
+    .grid { display: grid; grid-template-columns: auto 1fr; gap: 4px 8px; align-items: center; margin-bottom: 8px; }
+    input, select, textarea { padding: 4px; font: inherit; width: 100%; }
+    input[type=checkbox] { width: auto; }
+    .row { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+    button.act { padding: 5px 10px; cursor: pointer; }
+    button.primary { background: #0063a3; color: #fff; border: 1px solid #0063a3; border-radius: 3px; }
+    .result { background: #f7f8fa; border: 1px solid #dde; border-radius: 4px; padding: 6px 8px; margin: 6px 0; }
+    .ok { color: #1a7f37; font-weight: bold; } .bad { color: #c62828; font-weight: bold; } .warn { color: #b26a00; font-weight: bold; }
+    table { border-collapse: collapse; width: 100%; margin-top: 6px; font-size: 12px; }
+    th, td { border: 1px solid #ddd; padding: 3px 5px; text-align: left; }
+    th { background: #f2f2f2; }
+    tr.click { cursor: pointer; } tr.click:hover { background: #e8f2fb; }
+    .key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    #footer { padding: 6px 10px; border-top: 1px solid #ddd; color: #666; font-size: 11px; display: flex; justify-content: space-between; align-items: center; }
+    #status { padding: 4px 10px; color: #444; font-size: 12px; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <div id="tabs"></div>
+  <div id="status">Connecting to Trimble Connect…</div>
+
+  <!-- 1. FIND BY MARK -->
+  <section class="tool" data-tab="Find">
+    <h3>Find by mark</h3>
+    <p class="desc">Type a mark (e.g. 5A2B65). Partial matches allowed.</p>
+    <div class="row"><input id="findText" placeholder="Mark…"><button class="act primary" id="findGo">Find</button></div>
+    <label><input type="checkbox" id="findIsolate"> Show only the found members</label>
+    <div id="findOut"></div>
+  </section>
+
+  <!-- 2. LIFT CHECKER -->
+  <section class="tool" data-tab="Lift">
+    <h3>Lift checker</h3>
+    <p class="desc">Select the members in the lift. Updates as the selection changes.</p>
+    <div class="grid">
+      <span>Crane capacity at radius (t)</span><input id="liftCap" type="number" step="0.1" value="10">
+      <span>Rigging / hook allowance (t)</span><input id="liftRig" type="number" step="0.1" value="0.5">
+    </div>
+    <div id="liftOut" class="result">Select members.</div>
+    <div class="row">
+      <button class="act" id="liftCog">Show CoG marker</button>
+      <button class="act" id="liftOver">Colour pieces over capacity (whole model)</button>
+    </div>
+  </section>
+
+  <!-- 3. CRANE RADIUS -->
+  <section class="tool" data-tab="Crane">
+    <h3>Crane radius</h3>
+    <p class="desc">Set the crane position and its load chart, draw the radius rings, then check which pieces can be lifted.</p>
+    <div class="grid">
+      <span>Crane X (m)</span><input id="craneX" type="number" step="0.1">
+      <span>Crane Y (m)</span><input id="craneY" type="number" step="0.1">
+      <span>Ring level Z (m)</span><input id="craneZ" type="number" step="0.1">
+    </div>
+    <div class="row"><button class="act" id="craneFromSel">Use centre of selection</button></div>
+    <label>Load chart (radius m : capacity t, one per line)</label>
+    <textarea id="craneChart" rows="5">10:40
+15:25
+20:16
+25:11
+30:8</textarea>
+    <div class="row">
+      <button class="act primary" id="craneDraw">Draw rings</button>
+      <button class="act" id="craneCheck">Check all pieces</button>
+      <button class="act" id="craneClear">Clear rings</button>
+    </div>
+    <div id="craneOut"></div>
+  </section>
+
+  <!-- 4. ERECTION SEQUENCE -->
+  <section class="tool" data-tab="Sequence">
+    <h3>Erection sequence</h3>
+    <p class="desc">Steps through the model by phase. Current phase in orange, earlier phases in grey, later phases hidden.</p>
+    <div class="row"><button class="act primary" id="seqLoad">Load phases</button></div>
+    <div id="seqCtrl" style="display:none">
+      <input type="range" id="seqSlider" min="0" value="0">
+      <div class="result" id="seqLabel"></div>
+      <div class="row">
+        <button class="act" id="seqPrev">◀ Prev</button>
+        <button class="act" id="seqPlay">▶ Play</button>
+        <button class="act" id="seqNext">Next ▶</button>
+        <button class="act" id="seqReset">Show all</button>
+      </div>
+      <label>Play speed (s per phase) <input id="seqSpeed" type="number" value="1.5" step="0.5" style="width:70px"></label>
+    </div>
+  </section>
+
+  <!-- 5. LOAD BUILDER -->
+  <section class="tool" data-tab="Loads">
+    <h3>Load builder</h3>
+    <p class="desc">Select the pieces for a delivery, check them against the trailer limits, then save as a load. Set the limits for your own hauliers.</p>
+    <div class="grid">
+      <span>Max payload (t)</span><input id="loadMaxT" type="number" step="0.5" value="24">
+      <span>Max piece length (m)</span><input id="loadMaxL" type="number" step="0.1" value="13.6">
+      <span>Max width (m)</span><input id="loadMaxW" type="number" step="0.1" value="2.55">
+    </div>
+    <div id="loadOut" class="result">Select members.</div>
+    <div class="row">
+      <button class="act primary" id="loadSave">Save as load</button>
+      <button class="act" id="loadCsv">Export loads CSV</button>
+      <button class="act" id="loadClear">Clear all loads</button>
+    </div>
+    <div id="loadList"></div>
+  </section>
+
+  <!-- 6. HEAVY / LONG ALERTS -->
+  <section class="tool" data-tab="Alerts">
+    <h3>Heavy &amp; long piece alerts</h3>
+    <div class="grid">
+      <span>Heavy over (t)</span><input id="alertT" type="number" step="0.1" value="5">
+      <span>Long over (m)</span><input id="alertL" type="number" step="0.1" value="12">
+    </div>
+    <div class="row"><button class="act primary" id="alertGo">Check whole model</button></div>
+    <div id="alertOut"></div>
+  </section>
+
+  <!-- 7. DATA AUDIT -->
+  <section class="tool" data-tab="Audit">
+    <h3>Missing data audit</h3>
+    <p class="desc">Flags members missing any of these fields (names from the Settings tab, or Set.Property).</p>
+    <input id="auditFields" value="Mark, Profile, Grade, Finish, Weight">
+    <label><input type="checkbox" id="auditOnlySteel" checked> Only check objects that have a Profile</label>
+    <div class="row"><button class="act primary" id="auditGo">Run audit</button></div>
+    <div id="auditOut"></div>
+  </section>
+
+  <!-- 8. REVISION COMPARE -->
+  <section class="tool" data-tab="Revisions">
+    <h3>Revision change highlighter</h3>
+    <p class="desc">Load the old and new versions of the model in the viewer, pick them below, then compare. Matches objects by their IFC GUID.</p>
+    <div class="grid">
+      <span>Old version</span><select id="revOld"></select>
+      <span>New version</span><select id="revNew"></select>
+    </div>
+    <label>Compare fields</label>
+    <input id="revFields" value="Mark, Profile, Grade, Finish, Weight">
+    <label><input type="checkbox" id="revGeom" checked> Also compare position/size (5 mm tolerance)</label>
+    <div class="row">
+      <button class="act" id="revRefresh">Refresh model list</button>
+      <button class="act primary" id="revGo">Compare</button>
+    </div>
+    <div id="revOut"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="tool" data-tab="Settings">
+    <h3>Settings – property names</h3>
+    <p class="desc">Where each value lives in your model. Use Property or Set.Property (not case sensitive). Saved in this browser.</p>
+    <div class="grid" id="setGrid"></div>
+    <div class="grid">
+      <span>Weight units in model</span><select id="setWunit"><option value="kg">kg</option><option value="t">tonnes</option></select>
+    </div>
+    <div class="row">
+      <button class="act primary" id="setSave">Save</button>
+      <button class="act" id="setDefaults">Restore defaults</button>
+      <button class="act" id="setRescan">Re-read model data</button>
+    </div>
+  </section>
+
+  <div id="footer"><span id="ver"></span><button class="act" id="resetAll">Reset view (colours, visibility, markups)</button></div>
+
+  <!-- Always fetch the latest app.js (avoids cached copies) -->
+  <script>document.write('<script src="app.js?t=' + Date.now() + '"><\/script>');</script>
+</body>
+</html>

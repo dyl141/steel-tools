@@ -1,0 +1,9 @@
+{
+  "title": "Steel Tools",
+  "url": "https://dyl141.github.io/steel-tools/index.html",
+  "infoUrl": "https://github.com/dyl141/steel-tools",
+  "description": "Find by mark, lift checker, crane radius, erection sequence, load builder, alerts, data audit and revision compare",
+  "icon": "https://dyl141.github.io/steel-tools/icon.png",
+  "enabled": true,
+  "extensionType": ["3dviewer"]
+}
